@@ -3,6 +3,7 @@ import tkinter as tk
 import matplotlib,os,ast,glob
 from tkinter import *
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.backend_bases import MouseButton
 matplotlib.use("Agg") # see also: TDTR_fitting, gui_iSED, and diffractionPredictorUtility
 import matplotlib.pyplot as plt
 
@@ -52,9 +53,10 @@ resolution=[100,100]			# target resolution (we'll "smart" adjust this for you if
 mark=[[0,0,''],[0,0,'']]		# x,y,c
 datahandler=None
 
-named_spots = list(sorted(glob.glob("named_spots/*.txt")))
+named_areas = list(sorted(glob.glob("named_areas/*.txt")))
 
-def load_spot(f):
+# read in bounds from text files for pre-defined locations
+def load_area(f):
 	print("loading",f)
 	global bounds,resolution,mark
 	lines = open(f).readlines()
@@ -62,14 +64,16 @@ def load_spot(f):
 		exec(l, globals())
 	bounds = np.asarray(bounds)
 
-load_spot(named_spots[-1]) # going to default to the last one for now, solely because this is "Haw Ridge", which is smol, compared to "Afton Mountain Scenic Overlook", which is giganormous.
+location = named_areas[-1]
+load_area(location) # going to default to the last one for now, solely because this is "Haw Ridge", which is smol, compared to "Afton Mountain Scenic Overlook", which is giganormous.
 
 os.makedirs("figs",exist_ok=True)
 
 # set up buttons/entry panel
 def setUpButtons():
-	global field_c1lat,field_c1lon,field_c2lat,field_c2lon
+	global field_c1lat,field_c1lon,field_c2lat,field_c2lon,check_showRoads,drop_spots
 	entryWidth=7
+	# LAT/LON ENTRY FIELDS AND LABELS
 	label_c1 = tk.Label(frameLeft,text="first corner:")
 	label_c1.grid(row=0,column=0,sticky="NSEW")
 	label_c1lat = tk.Label(frameLeft,text="lat:")
@@ -94,18 +98,36 @@ def setUpButtons():
 	field_c2lon=tk.Entry(frameLeft,width=entryWidth)
 	field_c2lon.insert(0,str(bounds[1][1]))
 	field_c2lon.grid(row=1,column=4,sticky="NSEW")
+	# "GENERATE" BUTTON
 	button_gen=tk.Button(frameLeft,text="generate")
 	button_gen.bind("<Button-1>",generateBoth)
 	button_gen.grid(row=2,column=0)
-	#label_showRoads=tl.Label(frameLeft,text="show roads?")
-	#label_showRoads.grid(row=2,column=1,sticky="NSEW")
-	# TODO need tkvar for show roads, then showing should be conditional on that. checkButton can also accept a command= arg to regen
-	#check_showRoads=tk.Checkbutton(frameLeft,text="show roads?",onvalue=1,offvalue=0)
-	#check_showRoads.grid(row=2,column=1,sticky="NSEW")
-	# TODO add dropdown for selecting named_spots. make sure selecting a new named spot updates the lat/lon corners fields
+	# TOGGLE FOR ROADS/TRAILS AND NAMES
+	label_showRoads=tk.Label(frameLeft,text="show roads?")
+	label_showRoads.grid(row=2,column=1,sticky="NSEW")
+	check_showRoads=tk.IntVar() ; check_showRoads.set(1)
+	cbox_showRoads=tk.Checkbutton(frameLeft,text="show roads?",variable=check_showRoads,command=generateBoth)
+	cbox_showRoads.grid(row=2,column=1,sticky="NSEW")
+	# DROPDOWN FOR NAMED AREAS
+	drop_spot=tk.StringVar() ; drop_spot.set(location.split("/")[-1])
+	label_namedArea=tk.Label(frameLeft,text="location")
+	label_namedArea.grid(row=3,column=0,sticky="NSEW")
+	drop=tk.OptionMenu(frameLeft, drop_spot, *[ f.split("/")[-1] for f in named_areas], command=selectNamedArea)
+	drop.grid(row=3,column=1,sticky="NSEW")
+
+# loads bounds from text file, updates lat/lon GUI entry fields, regenerates
+def selectNamedArea(name=None):
+	load_spot("named_areas/"+name)
+	global field_c1lat,field_c1lon,field_c2lat,field_c2lon,mark
+	for field,ij in [[field_c1lat,(0,0)],[field_c1lon,(0,1)],[field_c2lat,(1,0)],[field_c2lon,(1,1)]]:
+		field.delete(0, tk.END)
+		field.insert(0,str(bounds[ij[0],ij[1]]))
+	mark=[[0,0,''],[0,0,'']]
+	generateBoth()
 
 mapObjs={} ; viewObjs={}
-def generateBoth(event,regen=True):
+# generates topo (updateTopoMap) and ground view (updateGroundView) based on GUI lat/lon fields
+def generateBoth(event=None,regen=True):
 
 	global bounds
 	lat1=float(field_c1lat.get()) ; lon1=float(field_c1lon.get())
@@ -126,6 +148,7 @@ def generateBoth(event,regen=True):
 	updateTopoMap(regen=regen)
 	updateGroundView(lat=None,lon=None,regen=regen)
 
+# topo map, self-explanatory, top panel of GUI
 def updateTopoMap(regen=True):
 	global elevations,lats,lons,roads
 	# PREP
@@ -157,13 +180,16 @@ def updateTopoMap(regen=True):
 		if len(m[2])==0:
 			continue
 		plt.scatter([m[0]],[m[1]],c=m[2],s=20)
-	#if check_showRoads
-	roads = getRoads(bounds)
-	for road in getRoads(bounds):
-		lat,lon,name=road
-		plt.plot(lon,lat,linewidth=1,c='k')
-		if len(name)>0 and len(lon)>1:
-			plt.annotate(name,(lon[len(lon)//2],lat[len(lat)//2]))
+	if check_showRoads.get():
+		roads = getRoads(bounds)
+		for road in getRoads(bounds):
+			lat,lon,name=road
+			plt.plot(lon,lat,linewidth=1,c='k')
+			if len(name)>0 and len(lon)>1:
+				plt.annotate(name,(lon[len(lon)//2],lat[len(lat)//2]))
+		if len(route)>0:
+			lon,lat = np.asarray(route).T ; print("lon",lon,"lat",lat)
+			plt.plot(lon,lat,linewidth=1,c='w')
 	if "canvas" in mapObjs.keys():			# if this isn't the first time, destroy the old "canvas" object
 		mapObjs["canvas"].get_tk_widget().destroy()
 		mapObjs["toolbar"].destroy()
@@ -173,8 +199,9 @@ def updateTopoMap(regen=True):
 	mapObjs["canvas"].get_tk_widget().pack(fill='both',expand=True)
 	# HANDLE CLICKS
 	mapObjs["canvas"].mpl_connect('button_press_event',viewLocationTrigger)	# link callback function to clicks
-	#mapObjs["canvas"].mpl_connect('button_press_event',selectRoadTrigger) # FEATURE NOT YET FINISHED
+	mapObjs["canvas"].mpl_connect('button_press_event',selectRoadTrigger) # FEATURE NOT YET FINISHED
 
+# ground view: from a given location, what would you see? ray-tracing to show what the mountains would look like. bottom panel of GUI
 def updateGroundView(lat=None,lon=None,regen=True):
 	global distances,phis,thetas,dcoords
 	if lon==None:
@@ -207,24 +234,61 @@ def updateGroundView(lat=None,lon=None,regen=True):
 	# HANDLE CLICKS
 	viewObjs["canvas"].mpl_connect('button_press_event',markPeakOnMapTrigger)
 
-selectedPoints=[[-84.49479385566438, 36.10463278641103], [-84.47737315634767, 36.10851408211372], [-84.47069371723141, 36.11492273315769], [-84.46320191389832, 36.11997744384026], [-84.45832772859727, 36.12846213677172], [-84.45805694052498, 36.14055733733358], [-84.45950114357716, 36.15102780946176]]
+#selectedPoints=[[-84.49479385566438, 36.10463278641103], [-84.47737315634767, 36.10851408211372], [-84.47069371723141, 36.11492273315769], [-84.46320191389832, 36.11997744384026], [-84.45832772859727, 36.12846213677172], [-84.45805694052498, 36.14055733733358], [-84.45950114357716, 36.15102780946176]]
+selectedPoints=[] # lon,lat pairs
 route=[]
+# fuzzy-match arbitrary lon/lat pairs to OSM paths, and trace all nodes between selected points
 def calculateRouteFromSelections():
-	selected = np.asarray(selectedPoints)
-	paths = [ np.asarray(r[:2]) for r in roads ]
-	#closests=np.zeros(len(selected)) ; distances = np.zeros(
-	#for path in paths: 
-	#	print(path.shape)
-	#	
+	global route
+	selected = np.asarray(selectedPoints) #; print("selected",selected)
+	paths = [ np.asarray(r[:2]).T for r in roads ] # path is a 2xN, listoflats,listoflons. so we use .T --> whichpoint,latlon
+	paths = [ p[:,::-1] for p in paths if len(p)>0 ] # filter zero-length paths, and switch from lat,lon to lon,lat (x,y convention)
+	nodes = [ [0,0,np.inf] for i in range(len(selected)) ] # list of: which path, which node, and the distance to it
+	# fuzzy align selected points onto paths' nodes
+	for i,point in enumerate(selected): # point is a singular (lat,lon)
+		for j,path in enumerate(paths):
+			#print("path",path)
+			distances = np.sum( (point[None,:]-path[:,:])**2,axis=1 )**.5 # distance from each selected point to each path node
+			k = np.argmin(distances)
+			if distances[k]<nodes[i][2]:
+				nodes[i] = [j,k,distances[k]]
+	# helper function: for a path index (p) and two points along it (i,j), return lon,lat of each point in between, in order
+	def lat_lon_between(p,i,j):
+		pps = list(range(min(i,j)+1,max(i,j))) # indices i to j, exclusive
+		if i>j: # may need to count backwards if i>j
+			pps = list(reversed(pps))
+		return [ paths[p][pp] for pp in pps ]
+	# cycle through found paths' nodes:
+	route = []
+	for i,(p,pp,d) in enumerate(nodes):
+		# always add a point to the route
+		route.append(paths[p][pp])
+		# if consecutive points are on the same path, in-fill with all intermediate nodes
+		if i+1 < len(nodes) and p==nodes[i+1][0]:
+			pp_next = nodes[i+1][1]
+			route += lat_lon_between(p,pp,pp_next)
+		# if different paths, find where the two paths meet (minimum distance between all sets of points)
+		elif i+1 < len(nodes):
+			p_next,pp_next = nodes[i+1][:2]
+			d_AB = np.sum( (paths[p][:,None,:]-paths[p_next][None,:,:])**2,axis=2)**.5 # distances from points on A to points on B
+			a,b=np.where(d_AB==np.amin(d_AB))
+			a=a[0] ; b=b[0] # TODO WHAT ABOUT WHEN TWO PATHS MEET BACK UP? WE SHOULD FIND THE CLOSEST POINT TO p,pp
+			# as with the "two points on the same path", we infill from p,pp to p,a and then p_next,b to p_next,pp_next
+			route += lat_lon_between(p,pp,a)
+			route += lat_lon_between(p_next,b,pp_next)
 
+# clicking on a matplotlib plot triggers this, which updates calculated ground view or mountain-finding
 def viewLocationTrigger(event):
 	#print(dir(event))
-	if not hasattr(event,"modifiers"): # old matplotlib may not have .modifiers, so populate from event.key
-		event.modifiers = { {"control":"ctrl"}.get(event.key,event.key) } # must remap control/ctrl
-	print("em",event.modifiers,"en",event.name,"ek",event.key)
+	#if not hasattr(event,"modifiers"): # old matplotlib may not have .modifiers, so populate from event.key
+	#	event.modifiers = { {"control":"ctrl"}.get(event.key,event.key) } # must remap control/ctrl
+	#print("em",event.modifiers,"en",event.name,"ek",event.key)
 	#mods=[ s for s in event.modifiers ]
 	#if "shift" not in event.modifiers:
 	#	return
+	if event.button != MouseButton.LEFT:
+		print(event.button)
+		return
 	lon,lat=event.xdata,event.ydata				# lat/lon coords from clicking on the map
 	#x=np.argmin(np.absolute(lons-x))			# convert to pixel indices
 	#y=np.argmin(np.absolute(lats-y))
@@ -235,13 +299,15 @@ def viewLocationTrigger(event):
 	mark[0]=[lon,lat,'r']				# also mark on the map where we were
 	updateTopoMap(regen=False)
 
-# TODO FEATURE NOT YET FINISHED. CURRENTLY JUST COLLECTS POINTS
+# select locations on the topo map to trace out a road. updates selectedPoints globals and then initiates fuzzy road-matching
 def selectRoadTrigger(event):
-	if not hasattr(event,"modifiers"): # old matplotlib may not have .modifiers, so populate from event.key
-		event.modifiers = { {"control":"ctrl"}.get(event.key,event.key) } # must remap control/ctrl
-	print("em",event.modifiers,"en",event.name,"ek",event.key)
+	#if not hasattr(event,"modifiers"): # old matplotlib may not have .modifiers, so populate from event.key
+	#	event.modifiers = { {"control":"ctrl"}.get(event.key,event.key) } # must remap control/ctrl
+	#print("em",event.modifiers,"en",event.name,"ek",event.key)
 	#mods=[ s for s in event.modifiers ]
-	if "ctrl" not in event.modifiers:
+	#if "ctrl" not in event.modifiers:
+	#	return
+	if event.button != MouseButton.RIGHT:
 		return
 	lon,lat=event.xdata,event.ydata				# lat/lon coords from clicking on the map
 	print("clicked",lon,lat)
@@ -251,6 +317,7 @@ def selectRoadTrigger(event):
 	calculateRouteFromSelections()
 	updateTopoMap(regen=False)
 
+# select locations on ground view plot and we'll figure out where that is on the map
 def markPeakOnMapTrigger(event):
 	phi,theta=event.xdata,event.ydata			# phi/theta coords from clicking on the ground-view
 	p=np.argmin(np.absolute(phis-phi))			# convert to pixel indices
