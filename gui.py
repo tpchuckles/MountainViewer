@@ -279,7 +279,7 @@ def calculateRouteFromSelections():
 
 # clicking on a matplotlib plot triggers this, which updates calculated ground view or mountain-finding
 def viewLocationTrigger(event):
-	#print(dir(event))
+	# Used to do shift+click for this, and ctrl+click for selectRoadTrigger, but now we're doing right vs left click
 	#if not hasattr(event,"modifiers"): # old matplotlib may not have .modifiers, so populate from event.key
 	#	event.modifiers = { {"control":"ctrl"}.get(event.key,event.key) } # must remap control/ctrl
 	#print("em",event.modifiers,"en",event.name,"ek",event.key)
@@ -301,6 +301,7 @@ def viewLocationTrigger(event):
 
 # select locations on the topo map to trace out a road. updates selectedPoints globals and then initiates fuzzy road-matching
 def selectRoadTrigger(event):
+	# Used to do ctrl+click for this, and shift+click for viewLocationTrigger, but now we're doing right vs left click
 	#if not hasattr(event,"modifiers"): # old matplotlib may not have .modifiers, so populate from event.key
 	#	event.modifiers = { {"control":"ctrl"}.get(event.key,event.key) } # must remap control/ctrl
 	#print("em",event.modifiers,"en",event.name,"ek",event.key)
