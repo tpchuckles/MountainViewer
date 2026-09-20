@@ -117,7 +117,7 @@ def setUpButtons():
 
 # loads bounds from text file, updates lat/lon GUI entry fields, regenerates
 def selectNamedArea(name=None):
-	load_spot("named_areas/"+name)
+	load_area("named_areas/"+name)
 	global field_c1lat,field_c1lon,field_c2lat,field_c2lon,mark
 	for field,ij in [[field_c1lat,(0,0)],[field_c1lon,(0,1)],[field_c2lat,(1,0)],[field_c2lon,(1,1)]]:
 		field.delete(0, tk.END)
