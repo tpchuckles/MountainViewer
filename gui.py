@@ -43,9 +43,12 @@ window.columnconfigure(0,weight=1,uniform="window") ; window.columnconfigure(1,w
 window.rowconfigure(0,weight=1,uniform="window") # one row, set weight to allow it to expand with the window
 # top vs bottom panels on the right
 frameUpper=Frame(master=frameRight) ; frameUpper.grid(row=0,column=0,sticky="NSEW")
-frameLower=Frame(master=frameRight) ; frameLower.grid(row=1,column=0,sticky="NSEW")
+frameMiddle=Frame(master=frameRight) ; frameMiddle.grid(row=1,column=0,sticky="NSEW")
+frameLower=Frame(master=frameRight) ; frameLower.grid(row=2,column=0,sticky="NSEW")
 # 4:1 ratio of height for area vs ground-view
-frameRight.rowconfigure(0,weight=2,uniform="frameR") ; frameRight.rowconfigure(1,weight=1,uniform="frameR")
+frameRight.rowconfigure(0,weight=4,uniform="frameR")
+frameRight.rowconfigure(1,weight=2,uniform="frameR")
+frameRight.rowconfigure(2,weight=1,uniform="frameR")
 frameRight.columnconfigure(0, weight=1,uniform="frameR") # one column, set weight to allow it to expand with the window
 
 # defaults. "bounds" will be read from GUI fields or text files, in format of: lat/lon of first corner, lat/lon of opposite corner
@@ -114,6 +117,8 @@ def setUpButtons():
 	label_namedArea.grid(row=3,column=0,sticky="NSEW")
 	drop=tk.OptionMenu(frameLeft, drop_spot, *[ f.split("/")[-1] for f in named_areas], command=selectNamedArea)
 	drop.grid(row=3,column=1,sticky="NSEW")
+	# CTRL+Z DELETES LAST SELECTED POINT
+	window.bind("<Control-z>",deleteLastSelectedPoint)
 
 # loads bounds from text file, updates lat/lon GUI entry fields, regenerates
 def selectNamedArea(name=None):
@@ -125,7 +130,7 @@ def selectNamedArea(name=None):
 	mark=[[0,0,''],[0,0,'']]
 	generateBoth()
 
-mapObjs={} ; viewObjs={}
+plotObjs={"map":{},"view":{},"elev":{}}
 # generates topo (updateTopoMap) and ground view (updateGroundView) based on GUI lat/lon fields
 def generateBoth(event=None,regen=True):
 
@@ -147,6 +152,7 @@ def generateBoth(event=None,regen=True):
 
 	updateTopoMap(regen=regen)
 	updateGroundView(lat=None,lon=None,regen=regen)
+	updateRouteElevationPlot()
 
 # topo map, self-explanatory, top panel of GUI
 def updateTopoMap(regen=True):
@@ -174,9 +180,9 @@ def updateTopoMap(regen=True):
 	print("updating elevation figure")
 	figsize=(figwidth,figwidth)
 	fov = None 	# infer current FOV (user can zoom and pan, so don't reset that)
-	if not regen and "ax" in mapObjs.keys():
-		fov = ( mapObjs["ax"].get_xlim(), mapObjs["ax"].get_ylim() )
-	mapObjs["fig"],mapObjs["ax"]=plt.subplots(figsize=figsize)	# new empty matplotlib figure/axes objects
+	if not regen and "ax" in plotObjs["map"].keys():
+		fov = ( plotObjs["map"]["ax"].get_xlim(), plotObjs["map"]["ax"].get_ylim() )
+	plotObjs["map"]["fig"],plotObjs["map"]["ax"]=plt.subplots(figsize=figsize)	# new empty matplotlib figure/axes objects
 	plt.imshow(elevations,cmap="inferno",aspect=1,extent=(min(lons),max(lons),min(lats),max(lats)))
 	plt.imsave("figs/topo.png",elevations,cmap="inferno")#,aspect=1,extent=(min(lons),max(lons),min(lats),max(lats)))
 	for m in mark:
@@ -193,21 +199,21 @@ def updateTopoMap(regen=True):
 		if len(route)>0:
 			lon,lat = np.asarray(route).T #; print("lon",lon,"lat",lat)
 			plt.plot(lon,lat,linewidth=1,c='w')
-	if "canvas" in mapObjs.keys():			# if this isn't the first time, destroy the old "canvas" object
-		mapObjs["canvas"].get_tk_widget().destroy()
-		mapObjs["toolbar"].destroy()
-	mapObjs["canvas"] = FigureCanvasTkAgg(mapObjs["fig"], master=frameUpper) # new canvas object to hold the figure
-	mapObjs["toolbar"] = NavigationToolbar2Tk(mapObjs["canvas"],frameUpper)	# toolbar, references the canvas
-	mapObjs["toolbar"].update()
+	if "canvas" in plotObjs["map"].keys():			# if this isn't the first time, destroy the old "canvas" object
+		plotObjs["map"]["canvas"].get_tk_widget().destroy()
+		plotObjs["map"]["toolbar"].destroy()
+	plotObjs["map"]["canvas"] = FigureCanvasTkAgg(plotObjs["map"]["fig"], master=frameUpper) # new canvas object to hold the figure
+	plotObjs["map"]["toolbar"] = NavigationToolbar2Tk(plotObjs["map"]["canvas"],frameUpper)	# toolbar, references the canvas
+	plotObjs["map"]["toolbar"].update()
 	if fov is not None:
-		mapObjs["toolbar"].push_current()
-		mapObjs["ax"].set_xlim(fov[0])
-		mapObjs["ax"].set_ylim(fov[1])
+		plotObjs["map"]["toolbar"].push_current()
+		plotObjs["map"]["ax"].set_xlim(fov[0])
+		plotObjs["map"]["ax"].set_ylim(fov[1])
 
-	mapObjs["canvas"].get_tk_widget().pack(fill='both',expand=True)
+	plotObjs["map"]["canvas"].get_tk_widget().pack(fill='both',expand=True)
 	# HANDLE CLICKS
-	mapObjs["canvas"].mpl_connect('button_press_event',viewLocationTrigger)	# link callback function to clicks
-	mapObjs["canvas"].mpl_connect('button_press_event',selectRoadTrigger) # FEATURE NOT YET FINISHED
+	plotObjs["map"]["canvas"].mpl_connect('button_press_event',viewLocationTrigger)	# link callback function to clicks
+	plotObjs["map"]["canvas"].mpl_connect('button_press_event',selectRoadTrigger) # FEATURE NOT YET FINISHED
 
 # ground view: from a given location, what would you see? ray-tracing to show what the mountains would look like. bottom panel of GUI
 def updateGroundView(lat=None,lon=None,regen=True):
@@ -229,18 +235,18 @@ def updateGroundView(lat=None,lon=None,regen=True):
 	# PLOT IT
 	print("updating ground view figure")
 	figsize=(figwidth,figwidth/4)
-	viewObjs["fig"],viewObjs["ax"]=plt.subplots(figsize=figsize)	# new empty matplotlib figure/axes objects
+	plotObjs["view"]["fig"],plotObjs["view"]["ax"]=plt.subplots(figsize=figsize)	# new empty matplotlib figure/axes objects
 	plt.imshow(distances,cmap="inferno",aspect=1,extent=(min(phis),max(phis),min(thetas),max(thetas)))
 	plt.imsave("figs/groundview.png",distances,cmap="inferno")#,aspect=1,extent=(min(phis),max(phis),min(thetas),max(thetas)))
-	if "canvas" in viewObjs.keys():		# if this isn't the first time, destroy the old "canvas" object
-		viewObjs["canvas"].get_tk_widget().destroy()
-		viewObjs["toolbar"].destroy()
-	viewObjs["canvas"] = FigureCanvasTkAgg(viewObjs["fig"], master=frameLower)# new canvas object to hold the figure
-	viewObjs["toolbar"] = NavigationToolbar2Tk(viewObjs["canvas"],frameLower)	# toolbar, references the canvas
-	viewObjs["toolbar"].update()
-	viewObjs["canvas"].get_tk_widget().pack(fill='both',expand=True)
+	if "canvas" in plotObjs["view"].keys():		# if this isn't the first time, destroy the old "canvas" object
+		plotObjs["view"]["canvas"].get_tk_widget().destroy()
+		plotObjs["view"]["toolbar"].destroy()
+	plotObjs["view"]["canvas"] = FigureCanvasTkAgg(plotObjs["view"]["fig"], master=frameMiddle)# new canvas object to hold the figure
+	plotObjs["view"]["toolbar"] = NavigationToolbar2Tk(plotObjs["view"]["canvas"],frameMiddle)	# toolbar, references the canvas
+	plotObjs["view"]["toolbar"].update()
+	plotObjs["view"]["canvas"].get_tk_widget().pack(fill='both',expand=True)
 	# HANDLE CLICKS
-	viewObjs["canvas"].mpl_connect('button_press_event',markPeakOnMapTrigger)
+	plotObjs["view"]["canvas"].mpl_connect('button_press_event',markPeakOnMapTrigger)
 
 #selectedPoints=[[-84.49479385566438, 36.10463278641103], [-84.47737315634767, 36.10851408211372], [-84.47069371723141, 36.11492273315769], [-84.46320191389832, 36.11997744384026], [-84.45832772859727, 36.12846213677172], [-84.45805694052498, 36.14055733733358], [-84.45950114357716, 36.15102780946176]]
 selectedPoints=[] # lon,lat pairs
@@ -283,7 +289,37 @@ def calculateRouteFromSelections():
 			a=a[0] ; b=b[0] # TODO WHAT ABOUT WHEN TWO PATHS MEET BACK UP? WE SHOULD FIND THE CLOSEST POINT TO p,pp
 			# as with the "two points on the same path", we infill from p,pp to p,a and then p_next,b to p_next,pp_next
 			route += lat_lon_between(p,pp,a)
+			route.append(paths[p][a]) 			# point on A closest to path B
+			if d_AB[a,b]>0:						# point on B closest to path A (if not the same point)
+				route.append(paths[p_next][b])
 			route += lat_lon_between(p_next,b,pp_next)
+
+def updateRouteElevationPlot():
+	ds = [0] ; zs = []
+	if len(route)<2:
+		return
+	from scipy.interpolate import RegularGridInterpolator
+	interp = RegularGridInterpolator((lats,lons), elevations)
+	for i,(lon,lat) in enumerate(route):
+		zs.append(interp((lat,lon)))
+		if i<len(route)-1:
+			lonn,latt = route[i+1]
+			d = srtm.utils.distance(lat,lon,latt,lonn)
+			ds.append(ds[-1]+d)
+	print("updating elevation plot")
+	figsize=(figwidth,figwidth/4)
+	plotObjs["elev"]["fig"],plotObjs["elev"]["ax"]=plt.subplots(figsize=figsize)	# new empty matplotlib figure/axes objects
+	plotObjs["elev"]["ax"].plot(ds,zs)
+	#plt.imshow(distances,cmap="inferno",aspect=1,extent=(min(phis),max(phis),min(thetas),max(thetas)))
+	#plt.imsave("figs/groundview.png",distances,cmap="inferno")#,aspect=1,extent=(min(phis),max(phis),min(thetas),max(thetas)))
+	if "canvas" in plotObjs["elev"].keys():		# if this isn't the first time, destroy the old "canvas" object
+		plotObjs["elev"]["canvas"].get_tk_widget().destroy()
+		plotObjs["elev"]["toolbar"].destroy()
+	plotObjs["elev"]["canvas"] = FigureCanvasTkAgg(plotObjs["elev"]["fig"], master=frameLower)# new canvas object to hold the figure
+	plotObjs["elev"]["toolbar"] = NavigationToolbar2Tk(plotObjs["elev"]["canvas"],frameLower)	# toolbar, references the canvas
+	plotObjs["elev"]["toolbar"].update()
+	plotObjs["elev"]["canvas"].get_tk_widget().pack(fill='both',expand=True)
+
 
 # clicking on a matplotlib plot triggers this, which updates calculated ground view or mountain-finding
 def viewLocationTrigger(event):
@@ -329,6 +365,14 @@ def selectRoadTrigger(event):
 	print(selectedPoints)
 	calculateRouteFromSelections()
 	updateTopoMap(regen=False)
+	updateRouteElevationPlot()
+
+def deleteLastSelectedPoint(event):
+	global selectedPoints
+	del selectedPoints[-1]
+	calculateRouteFromSelections()
+	updateTopoMap(regen=False)
+	updateRouteElevationPlot()
 
 # select locations on ground view plot and we'll figure out where that is on the map
 def markPeakOnMapTrigger(event):
