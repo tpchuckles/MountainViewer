@@ -173,6 +173,9 @@ def updateTopoMap(regen=True):
 	# PLOT IT
 	print("updating elevation figure")
 	figsize=(figwidth,figwidth)
+	fov = None 	# infer current FOV (user can zoom and pan, so don't reset that)
+	if not regen and "ax" in mapObjs.keys():
+		fov = ( mapObjs["ax"].get_xlim(), mapObjs["ax"].get_ylim() )
 	mapObjs["fig"],mapObjs["ax"]=plt.subplots(figsize=figsize)	# new empty matplotlib figure/axes objects
 	plt.imshow(elevations,cmap="inferno",aspect=1,extent=(min(lons),max(lons),min(lats),max(lats)))
 	plt.imsave("figs/topo.png",elevations,cmap="inferno")#,aspect=1,extent=(min(lons),max(lons),min(lats),max(lats)))
@@ -188,7 +191,7 @@ def updateTopoMap(regen=True):
 			if len(name)>0 and len(lon)>1:
 				plt.annotate(name,(lon[len(lon)//2],lat[len(lat)//2]))
 		if len(route)>0:
-			lon,lat = np.asarray(route).T ; print("lon",lon,"lat",lat)
+			lon,lat = np.asarray(route).T #; print("lon",lon,"lat",lat)
 			plt.plot(lon,lat,linewidth=1,c='w')
 	if "canvas" in mapObjs.keys():			# if this isn't the first time, destroy the old "canvas" object
 		mapObjs["canvas"].get_tk_widget().destroy()
@@ -196,6 +199,11 @@ def updateTopoMap(regen=True):
 	mapObjs["canvas"] = FigureCanvasTkAgg(mapObjs["fig"], master=frameUpper) # new canvas object to hold the figure
 	mapObjs["toolbar"] = NavigationToolbar2Tk(mapObjs["canvas"],frameUpper)	# toolbar, references the canvas
 	mapObjs["toolbar"].update()
+	if fov is not None:
+		mapObjs["toolbar"].push_current()
+		mapObjs["ax"].set_xlim(fov[0])
+		mapObjs["ax"].set_ylim(fov[1])
+
 	mapObjs["canvas"].get_tk_widget().pack(fill='both',expand=True)
 	# HANDLE CLICKS
 	mapObjs["canvas"].mpl_connect('button_press_event',viewLocationTrigger)	# link callback function to clicks
@@ -286,6 +294,8 @@ def viewLocationTrigger(event):
 	#mods=[ s for s in event.modifiers ]
 	#if "shift" not in event.modifiers:
 	#	return
+	if event.canvas.toolbar.mode:
+		return
 	if event.button != MouseButton.LEFT:
 		print(event.button)
 		return
@@ -308,6 +318,8 @@ def selectRoadTrigger(event):
 	#mods=[ s for s in event.modifiers ]
 	#if "ctrl" not in event.modifiers:
 	#	return
+	if event.canvas.toolbar.mode:
+		return
 	if event.button != MouseButton.RIGHT:
 		return
 	lon,lat=event.xdata,event.ydata				# lat/lon coords from clicking on the map
