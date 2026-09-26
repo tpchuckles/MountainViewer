@@ -7,4 +7,6 @@ click the topo map (top panel, drops a red pin) to generate the view from that l
 
 click the ground view (bottom panel) to calculate where that point is on the topo map (drops a green pin on the top panel)
 
+right-click the topo map to select the nearest point along a trail or road, select multiple points to build up your route, and view the elevation map of your trail at the bottom.
+
 ![til](./figs/quickdirtydemo.gif)
